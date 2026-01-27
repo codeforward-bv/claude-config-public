@@ -220,24 +220,24 @@ setup_mcp_servers() {
         return
     fi
 
-    info "Configuring MCP servers..."
+    info "Configuring MCP servers (user scope)..."
 
     # Context7 — live documentation
-    if claude mcp add context7 -- npx -y @anthropic-ai/context7-mcp 2>/dev/null; then
+    if claude mcp add context7 --scope user -- npx -y @anthropic-ai/context7-mcp 2>/dev/null; then
         ok "context7 (documentation)"
     else
         warn "context7 — already configured or failed"
     fi
 
     # Playwright — browser testing
-    if claude mcp add playwright -- npx -y @anthropic-ai/playwright-mcp 2>/dev/null; then
+    if claude mcp add playwright --scope user -- npx -y @anthropic-ai/playwright-mcp 2>/dev/null; then
         ok "playwright (browser testing)"
     else
         warn "playwright — already configured or failed"
     fi
 
-    # GitHub — requires Copilot license
-    if claude mcp add github --url https://api.githubcopilot.com/mcp 2>/dev/null; then
+    # GitHub — uses Copilot auth (no PAT needed, requires Copilot license)
+    if claude mcp add github --scope user --transport http https://api.githubcopilot.com/mcp 2>/dev/null; then
         ok "github (GitHub integration)"
     else
         warn "github — already configured or failed"
