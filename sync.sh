@@ -222,15 +222,15 @@ setup_mcp_servers() {
 
     info "Configuring MCP servers (user scope)..."
 
-    # Context7 — live documentation
-    if claude mcp add context7 --scope user -- npx -y @anthropic-ai/context7-mcp 2>/dev/null; then
+    # Context7 — live documentation (https://github.com/upstash/context7)
+    if claude mcp add context7 --scope user -- npx -y @upstash/context7-mcp 2>/dev/null; then
         ok "context7 (documentation)"
     else
         warn "context7 — already configured or failed"
     fi
 
-    # Playwright — browser testing
-    if claude mcp add playwright --scope user -- npx -y @anthropic-ai/playwright-mcp 2>/dev/null; then
+    # Playwright — browser testing (https://github.com/microsoft/playwright-mcp)
+    if claude mcp add playwright --scope user -- npx -y @playwright/mcp 2>/dev/null; then
         ok "playwright (browser testing)"
     else
         warn "playwright — already configured or failed"
