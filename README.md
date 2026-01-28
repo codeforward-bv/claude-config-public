@@ -14,8 +14,9 @@ That's it. The script handles everything:
 
 1. **Installs missing tools** — Homebrew, `gh`, `jq`, Node.js, Claude Code
 2. **Clones the private config repo** — via SSH or `gh` auth
-3. **Syncs team files** — `CLAUDE.md`, `settings.json`, commands, guidelines → `~/.claude/`
-4. **Configures MCP servers** — context7, playwright, github
+3. **Syncs team files** — `global_context.md`, `settings.json`, commands, guidelines → `~/.claude/`
+4. **Builds composite CLAUDE.md** — combines global rules, local overrides, and candidates
+5. **Configures MCP servers** — context7, playwright, github
 
 > First run? You may be prompted to authenticate with `gh auth login` to access the private config repo.
 
@@ -23,16 +24,35 @@ That's it. The script handles everything:
 
 Run the same command again anytime to pull the latest team configuration.
 
+## Knowledge Management
+
+The sync uses a **Knowledge Promotion Pipeline**:
+
+```
+~/.claude/
+├── global_context.md     ← Team rules (synced, read-only)
+├── global_candidates.md  ← Your nominations (append-only, never overwritten)
+├── CLAUDE.local.md       ← Personal overrides (never synced)
+└── CLAUDE.md             ← Composite (auto-generated from above)
+```
+
+When Claude learns something new:
+- **Project-specific** → update the project's `CLAUDE.md`
+- **Global** → append to `~/.claude/global_candidates.md`
+
+Candidates are reviewed periodically and promoted to the central repo via PR.
+
 ## What Gets Synced
 
 | File | Destination | Strategy |
 |------|-------------|----------|
-| `CLAUDE.md` | `~/.claude/CLAUDE.md` | Overwrite |
+| `global_context.md` | `~/.claude/global_context.md` | Overwrite |
+| `global_candidates.template.md` | `~/.claude/global_candidates.md` | Create if missing |
 | `.claude/settings.json` | `~/.claude/settings.json` | Deep merge |
 | `commands/*.md` | `~/.claude/commands/` | Overwrite |
 | `guidelines/*.md` | `~/.claude/guidelines/` | Overwrite |
 
-Personal customizations in `~/.claude/CLAUDE.local.md` and `~/.claude/settings.local.json` are never touched.
+Personal files (`CLAUDE.local.md`, `global_candidates.md`, `settings.local.json`) are never touched after initial creation.
 
 ## Config Repo
 
