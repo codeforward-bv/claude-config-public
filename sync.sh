@@ -244,6 +244,112 @@ setup_mcp_servers() {
     fi
 }
 
+setup_odoo_mcp() {
+    local MCP_DIR="$CLAUDE_DIR/servers/codeforward-odoo-mcp"
+    local ODOO_REPO_SSH="git@github.com:codeforward-bv/codeforward-odoo-mcp.git"
+    local ODOO_REPO_NAME="codeforward-bv/codeforward-odoo-mcp"
+
+    if ! command -v claude &>/dev/null; then
+        return
+    fi
+
+    echo ""
+    info "Codeforward Odoo MCP server (task management)"
+
+    # Check if already configured
+    if [[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq &>/dev/null; then
+        if jq -e '.mcpServers["codeforward-odoo"]' "$CLAUDE_DIR/settings.json" &>/dev/null; then
+            ok "codeforward-odoo — already configured"
+            printf "    Reconfigure? (y/N) "
+            read -r reconfigure
+            if [[ ! "$reconfigure" =~ ^[Yy]$ ]]; then
+                return
+            fi
+        fi
+    fi
+
+    printf "    Set up Odoo integration? (y/N) "
+    read -r answer
+    if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+        info "Skipped Odoo MCP setup"
+        return
+    fi
+
+    # Ensure uv is installed
+    if ! command -v uv &>/dev/null; then
+        if [[ "$(uname -s)" == "Darwin" ]] && command -v brew &>/dev/null; then
+            info "Installing uv via Homebrew..."
+            brew install uv
+        else
+            info "Installing uv..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+        fi
+        command -v uv &>/dev/null || fail "Failed to install uv"
+        ok "uv installed"
+    else
+        ok "uv"
+    fi
+
+    # Clone or update the server repo
+    mkdir -p "$CLAUDE_DIR/servers"
+    if [[ -d "$MCP_DIR/.git" ]]; then
+        info "Updating codeforward-odoo-mcp..."
+        git -C "$MCP_DIR" pull --quiet
+        ok "Repository updated"
+    else
+        info "Cloning codeforward-odoo-mcp..."
+        rm -rf "$MCP_DIR"
+        if git clone --quiet "$ODOO_REPO_SSH" "$MCP_DIR" 2>/dev/null; then
+            ok "Cloned via SSH"
+        elif command -v gh &>/dev/null && gh repo clone "$ODOO_REPO_NAME" "$MCP_DIR" -- --quiet 2>/dev/null; then
+            ok "Cloned via gh CLI"
+        else
+            warn "Failed to clone codeforward-odoo-mcp — skipping"
+            return
+        fi
+    fi
+
+    # Install dependencies
+    info "Installing server dependencies..."
+    uv sync --quiet --directory "$MCP_DIR"
+    ok "Dependencies installed"
+
+    # Prompt for Odoo credentials
+    echo ""
+    info "Enter your Odoo credentials"
+    info "(API key: Odoo > Settings > Users > Preferences > API Keys)"
+    echo ""
+
+    printf "    ODOO_URL [https://codeforward.nl]: "
+    read -r odoo_url
+    odoo_url="${odoo_url:-https://codeforward.nl}"
+
+    printf "    ODOO_DB: "
+    read -r odoo_db
+    [[ -n "$odoo_db" ]] || fail "ODOO_DB is required"
+
+    printf "    ODOO_USER (email): "
+    read -r odoo_user
+    [[ -n "$odoo_user" ]] || fail "ODOO_USER is required"
+
+    printf "    ODOO_API_KEY: "
+    read -rs odoo_api_key
+    echo ""
+    [[ -n "$odoo_api_key" ]] || fail "ODOO_API_KEY is required"
+
+    # Register MCP server
+    if claude mcp add codeforward-odoo --scope user \
+        -e "ODOO_URL=$odoo_url" \
+        -e "ODOO_DB=$odoo_db" \
+        -e "ODOO_USER=$odoo_user" \
+        -e "ODOO_API_KEY=$odoo_api_key" \
+        -- uv run --directory "$MCP_DIR" python -m codeforward_odoo_mcp 2>/dev/null; then
+        ok "codeforward-odoo (Odoo task management)"
+    else
+        warn "codeforward-odoo — registration failed"
+    fi
+}
+
 # --- Main ---
 
 main() {
@@ -257,6 +363,7 @@ main() {
     sync_files "$source"
     echo ""
     setup_mcp_servers
+    setup_odoo_mcp
 
     echo ""
     ok "Sync complete!"
