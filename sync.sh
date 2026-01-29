@@ -398,22 +398,27 @@ setup_odoo_mcp() {
     info "Codeforward Odoo MCP server (task management)"
 
     # Check if already configured
+    local is_configured=false
     if [[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq &>/dev/null; then
         if jq -e '.mcpServers["codeforward-odoo"]' "$CLAUDE_DIR/settings.json" &>/dev/null; then
-            ok "codeforward-odoo — already configured"
-            printf "    Reconfigure? (y/N) "
-            read -r reconfigure
-            if [[ ! "$reconfigure" =~ ^[Yy]$ ]]; then
-                return
-            fi
+            is_configured=true
         fi
     fi
 
-    printf "    Set up Odoo integration? (y/N) "
-    read -r answer
-    if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-        info "Skipped Odoo MCP setup"
-        return
+    if [[ "$is_configured" == "true" ]]; then
+        ok "codeforward-odoo — already configured"
+        printf "    Reconfigure? (y/N) "
+        read -r answer
+        if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+            return
+        fi
+    else
+        printf "    Set up Odoo integration? (Y/n) "
+        read -r answer
+        if [[ "$answer" =~ ^[Nn]$ ]]; then
+            info "Skipped Odoo MCP setup"
+            return
+        fi
     fi
 
     # Ensure uv is installed
