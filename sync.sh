@@ -29,6 +29,30 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
+TEAL='\033[38;5;37m'
+WHITE='\033[38;5;255m'
+
+# --- Banner ---
+BANNER_LINES=(
+    " ██████╗ ██╗      ██████╗ ██████╗ ██████╗ ███████╗███████╗ ██████╗ ██████╗ ██╗    ██╗ █████╗ ██████╗ ██████╗ "
+    "██╔════╝ ╚██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔════╝██╔═══██╗██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔══██╗"
+    "██║       ╚██╗   ██║     ██║   ██║██║  ██║█████╗  █████╗  ██║   ██║██████╔╝██║ █╗ ██║███████║██████╔╝██║  ██║"
+    "██║       ██╔╝   ██║     ██║   ██║██║  ██║██╔══╝  ██╔══╝  ██║   ██║██╔══██╗██║███╗██║██╔══██║██╔══██╗██║  ██║"
+    "╚██████╗ ██╔╝    ╚██████╗╚██████╔╝██████╔╝███████╗██║     ╚██████╔╝██║  ██║╚███╔███╔╝██║  ██║██║  ██║██████╔╝"
+    " ╚═════╝ ╚═╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ "
+    "                                        Claude Config Sync                                                   "
+)
+
+# Chevron column ranges for each row (start, end)
+CHEVRON_RANGES=(
+    "9 12"
+    "9 13"
+    "10 14"
+    "10 14"
+    "9 13"
+    "9 12"
+    ""
+)
 
 # --- Helpers ---
 info()  { printf "${BLUE}[info]${NC} %s\n" "$*"; }
@@ -122,10 +146,127 @@ install_dependencies() {
 
 # --- Steps ---
 
+move_cursor_up() {
+    printf '\033[%dA' "$1"
+}
+
+print_banner_colored() {
+    local teal_color="$1"
+    local white_color="$2"
+    local row_idx=0
+
+    for line in "${BANNER_LINES[@]}"; do
+        local range="${CHEVRON_RANGES[$row_idx]}"
+        if [[ -n "$range" ]]; then
+            local start end
+            read -r start end <<< "$range"
+            local before="${line:0:$start}"
+            local chevron="${line:$start:$((end - start))}"
+            local after="${line:$end}"
+            printf '%b%s%b%s%b%s%b\n' "$teal_color" "$before" "$white_color" "$chevron" "$teal_color" "$after" "$NC"
+        else
+            printf '%b%s%b\n' "$teal_color" "$line" "$NC"
+        fi
+        ((row_idx++))
+    done
+}
+
+print_banner_knight_rider() {
+    local highlight_pos="$1"
+    local teal='\033[38;5;37m'
+    local white='\033[38;5;255m'
+    local gradient_colors=(
+        '\033[38;5;37m'   # teal
+        '\033[38;5;44m'   # cyan
+        '\033[38;5;51m'   # bright cyan
+        '\033[38;5;255m'  # white
+        '\033[38;5;51m'   # bright cyan
+        '\033[38;5;44m'   # cyan
+        '\033[38;5;37m'   # teal
+    )
+    local gradient_width=${#gradient_colors[@]}
+    local row_idx=0
+
+    for line in "${BANNER_LINES[@]}"; do
+        local range="${CHEVRON_RANGES[$row_idx]}"
+        local chev_start=-1
+        local chev_end=-1
+        if [[ -n "$range" ]]; then
+            read -r chev_start chev_end <<< "$range"
+        fi
+
+        local colored_line=""
+        local i=0
+        local len=${#line}
+        while [[ $i -lt $len ]]; do
+            local char="${line:$i:1}"
+            local color
+
+            # Chevron is always white
+            if [[ $chev_start -ge 0 && $i -ge $chev_start && $i -lt $chev_end ]]; then
+                color="$white"
+            else
+                local dist=$((highlight_pos - i))
+                [[ $dist -lt 0 ]] && dist=$((-dist))
+                if [[ $dist -lt $gradient_width ]]; then
+                    color="${gradient_colors[$dist]}"
+                else
+                    color="$teal"
+                fi
+            fi
+            colored_line+="${color}${char}"
+            ((i++))
+        done
+        printf '%b%b\n' "$colored_line" "$NC"
+        ((row_idx++))
+    done
+}
+
 banner() {
-    echo ""
-    printf "${BOLD}Codeforward · Claude Config Sync${NC}\n"
-    echo "────────────────────────────────"
+    # Skip animation if not a terminal
+    if [[ ! -t 1 ]]; then
+        print_banner_colored "$TEAL" "$WHITE"
+        echo ""
+        return
+    fi
+
+    local banner_height=${#BANNER_LINES[@]}
+    local banner_width=${#BANNER_LINES[0]}
+
+    # Teal shades for fade-in
+    local teal_shades=(23 29 30 31 35 36 37 43 44 51)
+    local white_shades=(240 244 247 249 251 252 253 254 255 255)
+
+    # Phase 1: Fade in (0.5 seconds, 10 stages)
+    for shade_idx in {0..9}; do
+        local teal_color="\033[38;5;${teal_shades[$shade_idx]}m"
+        local white_color="\033[38;5;${white_shades[$shade_idx]}m"
+        print_banner_colored "$teal_color" "$white_color"
+        sleep 0.05
+        [[ $shade_idx -lt 9 ]] && move_cursor_up "$banner_height"
+    done
+
+    # Phase 2: Knight Rider sweep (0.5 seconds, 1 sweep)
+    local step_size=4
+    local delay=0.008
+
+    # Left to right
+    for ((pos = 0; pos <= banner_width + 7; pos += step_size)); do
+        move_cursor_up "$banner_height"
+        print_banner_knight_rider "$pos"
+        sleep "$delay"
+    done
+
+    # Right to left
+    for ((pos = banner_width + 6; pos >= -7; pos -= step_size)); do
+        move_cursor_up "$banner_height"
+        print_banner_knight_rider "$pos"
+        sleep "$delay"
+    done
+
+    # Final: solid teal with white chevron
+    move_cursor_up "$banner_height"
+    print_banner_colored "$TEAL" "$WHITE"
     echo ""
 }
 
