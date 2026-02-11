@@ -278,7 +278,7 @@ resolve_source() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 
-    if [[ -f "$script_dir/CLAUDE.md" && -d "$script_dir/commands" && -d "$script_dir/guidelines" ]]; then
+    if [[ -f "$script_dir/CLAUDE.md" && -d "$script_dir/commands" ]]; then
         info "Source: local repo ($script_dir)" >&2
         echo "$script_dir"
         return
@@ -310,13 +310,24 @@ sync_files() {
     info "Syncing files to $CLAUDE_DIR/"
 
     # Ensure target directories exist
-    mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/commands" "$CLAUDE_DIR/guidelines"
+    mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/commands"
 
-    # CLAUDE.md
+    # CLAUDE.md → global_context.md (team rules, overwrite)
     if [[ -f "$source/CLAUDE.md" ]]; then
-        cp "$source/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
-        ok "CLAUDE.md"
+        cp "$source/CLAUDE.md" "$CLAUDE_DIR/global_context.md"
+        ok "global_context.md (from CLAUDE.md)"
         ((synced++))
+    fi
+
+    # global_candidates.md (create from template if missing, never overwrite)
+    if [[ ! -f "$CLAUDE_DIR/global_candidates.md" ]]; then
+        if [[ -f "$source/global_candidates.template.md" ]]; then
+            cp "$source/global_candidates.template.md" "$CLAUDE_DIR/global_candidates.md"
+            ok "global_candidates.md (created from template)"
+            ((synced++))
+        fi
+    else
+        ok "global_candidates.md (preserved)"
     fi
 
     # settings.json — deep merge (team settings win, local keys preserved)
@@ -344,15 +355,57 @@ sync_files() {
         ((synced++))
     done
 
-    # guidelines/*.md
-    for file in "$source/guidelines"/*.md; do
-        [[ -f "$file" ]] || continue
-        cp "$file" "$CLAUDE_DIR/guidelines/"
-        ok "guidelines/$(basename "$file")"
-        ((synced++))
-    done
-
     info "Synced $synced file(s)"
+}
+
+build_composite() {
+    info "Building composite CLAUDE.md..."
+
+    local composite="$CLAUDE_DIR/CLAUDE.md"
+    local header="# CLAUDE.md (Generated)
+
+> **WARNING:** This file is auto-generated. Do not edit directly.
+>
+> **Remember:** When corrected, log the learning IMMEDIATELY:
+> - Project-specific → project's \`CLAUDE.md\`
+> - Global → \`~/.claude/global_candidates.md\` (between the markers)
+
+---
+
+"
+
+    # Start with header
+    printf '%s' "$header" > "$composite"
+
+    # Append global_context.md
+    if [[ -f "$CLAUDE_DIR/global_context.md" ]]; then
+        cat "$CLAUDE_DIR/global_context.md" >> "$composite"
+        printf '\n\n' >> "$composite"
+    fi
+
+    # Append CLAUDE.local.md if it exists
+    if [[ -f "$CLAUDE_DIR/CLAUDE.local.md" ]]; then
+        printf '%s\n\n' "---" >> "$composite"
+        printf '%s\n\n' "# Local Overrides" >> "$composite"
+        cat "$CLAUDE_DIR/CLAUDE.local.md" >> "$composite"
+        printf '\n\n' >> "$composite"
+    fi
+
+    # Append global_candidates.md if it has actual candidates between markers
+    if [[ -f "$CLAUDE_DIR/global_candidates.md" ]]; then
+        # Extract content between CANDIDATES markers and check if non-empty
+        local candidates_content
+        candidates_content=$(sed -n '/<!-- CANDIDATES:START -->/,/<!-- CANDIDATES:END -->/p' "$CLAUDE_DIR/global_candidates.md" | grep -v '^<!-- CANDIDATES' || true)
+        local has_content
+        has_content=$(echo "$candidates_content" | grep -v '^[[:space:]]*$' || true)
+        if [[ -n "$has_content" ]]; then
+            printf '%s\n\n' "---" >> "$composite"
+            printf '%s\n\n' "# Candidate Rules (Pending Promotion)" >> "$composite"
+            printf '%s\n\n' "$candidates_content" >> "$composite"
+        fi
+    fi
+
+    ok "CLAUDE.md (composite built)"
 }
 
 setup_mcp_servers() {
@@ -508,15 +561,19 @@ main() {
 
     sync_files "$source"
     echo ""
+    build_composite
+    echo ""
     setup_mcp_servers
     setup_odoo_mcp
 
     echo ""
     ok "Sync complete!"
     echo ""
-    info "Personal customizations belong in:"
-    echo "    ~/.claude/CLAUDE.local.md       (user instructions)"
-    echo "    ~/.claude/settings.local.json   (user settings)"
+    info "Knowledge management files:"
+    echo "    ~/.claude/global_context.md     (team rules - read only)"
+    echo "    ~/.claude/global_candidates.md  (nominate new global rules here)"
+    echo "    ~/.claude/CLAUDE.local.md       (personal overrides)"
+    echo "    ~/.claude/CLAUDE.md             (composite - auto-generated)"
     echo ""
     info "Re-run this script anytime to pull the latest team config."
     echo ""
